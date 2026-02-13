@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import subprocess
+import asyncio
 from datetime import datetime, timezone, timedelta
 import requests
 
@@ -136,29 +137,36 @@ def generate_voice_text(theme):
 
 def create_voice(text):
     try:
-        # Шаг 1: создаём mp3
-        subprocess.run(
-            ["edge-tts", "--voice", "ru-RU-DmitryNeural", "--text", text, "--write-media", "voice.mp3"],
-            timeout=30,
-            check=True,
-            capture_output=True,
-        )
+        import edge_tts
+
+        async def do_tts():
+            communicate = edge_tts.Communicate(text, "ru-RU-DmitryNeural")
+            await communicate.save("voice.mp3")
+
+        asyncio.run(do_tts())
         print("MP3 created!")
 
-        # Шаг 2: конвертируем в ogg opus (формат Telegram)
-        subprocess.run(
+        if not os.path.exists("voice.mp3"):
+            print("MP3 file not found")
+            return False
+
+        result = subprocess.run(
             ["ffmpeg", "-y", "-i", "voice.mp3", "-c:a", "libopus", "-b:a", "64k", "voice.ogg"],
             timeout=30,
-            check=True,
             capture_output=True,
+            text=True,
         )
-        print("OGG created!")
 
-        if os.path.exists("voice.ogg"):
-            return True
+        if result.returncode != 0:
+            print("FFmpeg error:", result.stderr)
+            return False
+
+        print("OGG created!")
+        return os.path.exists("voice.ogg")
+
     except Exception as e:
         print("Voice error:", e)
-    return False
+        return False
 
 
 def send_voice_to_telegram(file_path):
@@ -242,7 +250,7 @@ def main():
     else:
         greeting = "🌙"
 
-    # 1. Голосовое сообщение
+    # 1. Голосовое
     print("Generating voice text...")
     voice_text = generate_voice_text(theme)
     if voice_text:
@@ -255,12 +263,8 @@ def main():
                 print("Voice sent!")
             else:
                 print("Voice send error:", vr)
-        else:
-            print("Voice creation failed")
-    else:
-        print("Voice text generation failed")
 
-    # 2. Картинка с цитатой
+    # 2. Картинка
     print("Generating quote...")
     quote = generate_quote(theme)
     if quote:
@@ -270,7 +274,7 @@ def main():
         if pr.get("ok"):
             print("Photo sent!")
 
-    # 3. Текстовый пост
+    # 3. Текст
     print("Generating post...")
     content = generate_post(theme)
     if not content:
@@ -279,7 +283,7 @@ def main():
 
     full_post = greeting + "\n\n" + content + "\n\n" + HASHTAGS
 
-    # 4. Telegraph статья
+    # 4. Telegraph
     print("Generating article...")
     article = generate_article(theme)
     if article:
