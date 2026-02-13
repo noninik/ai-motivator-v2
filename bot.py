@@ -93,19 +93,8 @@ POST_STYLES = [
     },
 ]
 
-QUOTE_STYLE = {
-    "system": "Ты создаешь мощные короткие цитаты на русском. Одно предложение.",
-    "prompt": "Придумай мощную мотивационную цитату на тему: {theme}. Одно предложение. Максимум 15 слов. Дерзко и сильно. Без кавычек.",
-}
 
-VOICE_STYLE = {
-    "system": "Ты мотивационный спикер. Пишешь текст для озвучки на русском.",
-    "prompt": "Напиши текст для голосового сообщения на тему: {theme}. 2-3 предложения. Максимум 40 слов. Говори как будто обращаешься к одному человеку. Начни с обращения. Мощно и коротко. Без кавычек.",
-}
-
-
-def generate_post(theme):
-    style = random.choice(POST_STYLES)
+def call_groq(system, prompt):
     headers = {
         "Authorization": "Bearer " + GROQ_API_KEY,
         "Content-Type": "application/json",
@@ -113,8 +102,8 @@ def generate_post(theme):
     body = {
         "model": MODEL,
         "messages": [
-            {"role": "system", "content": style["system"]},
-            {"role": "user", "content": style["prompt"].format(theme=theme)},
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
         ],
         "temperature": 0.9,
         "max_tokens": 300,
@@ -122,60 +111,50 @@ def generate_post(theme):
     resp = requests.post(GROQ_URL, headers=headers, json=body, timeout=30)
     if resp.status_code != 200:
         print("Groq error:", resp.text)
-        sys.exit(1)
+        return None
     return resp.json()["choices"][0]["message"]["content"]
+
+
+def generate_post(theme):
+    style = random.choice(POST_STYLES)
+    return call_groq(style["system"], style["prompt"].format(theme=theme))
 
 
 def generate_quote(theme):
-    headers = {
-        "Authorization": "Bearer " + GROQ_API_KEY,
-        "Content-Type": "application/json",
-    }
-    body = {
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": QUOTE_STYLE["system"]},
-            {"role": "user", "content": QUOTE_STYLE["prompt"].format(theme=theme)},
-        ],
-        "temperature": 0.9,
-        "max_tokens": 50,
-    }
-    resp = requests.post(GROQ_URL, headers=headers, json=body, timeout=30)
-    if resp.status_code != 200:
-        return None
-    return resp.json()["choices"][0]["message"]["content"]
+    return call_groq(
+        "Ты создаешь мощные короткие цитаты на русском.",
+        "Придумай мощную мотивационную цитату на тему: " + theme + ". Одно предложение. Максимум 15 слов. Без кавычек."
+    )
 
 
 def generate_voice_text(theme):
-    headers = {
-        "Authorization": "Bearer " + GROQ_API_KEY,
-        "Content-Type": "application/json",
-    }
-    body = {
-        "model": MODEL,
-        "messages": [
-            {"role": "system", "content": VOICE_STYLE["system"]},
-            {"role": "user", "content": VOICE_STYLE["prompt"].format(theme=theme)},
-        ],
-        "temperature": 0.9,
-        "max_tokens": 100,
-    }
-    resp = requests.post(GROQ_URL, headers=headers, json=body, timeout=30)
-    if resp.status_code != 200:
-        return None
-    return resp.json()["choices"][0]["message"]["content"]
+    return call_groq(
+        "Ты мотивационный спикер. Пишешь текст для озвучки на русском.",
+        "Напиши текст для голосового сообщения на тему: " + theme + ". 2-3 предложения. Максимум 40 слов. Без кавычек."
+    )
 
 
 def create_voice(text):
     try:
+        # Шаг 1: создаём mp3
         subprocess.run(
-            ["edge-tts", "--voice", "ru-RU-DmitryNeural", "--text", text, "--write-media", "voice.ogg"],
+            ["edge-tts", "--voice", "ru-RU-DmitryNeural", "--text", text, "--write-media", "voice.mp3"],
             timeout=30,
             check=True,
             capture_output=True,
         )
+        print("MP3 created!")
+
+        # Шаг 2: конвертируем в ogg opus (формат Telegram)
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", "voice.mp3", "-c:a", "libopus", "-b:a", "64k", "voice.ogg"],
+            timeout=30,
+            check=True,
+            capture_output=True,
+        )
+        print("OGG created!")
+
         if os.path.exists("voice.ogg"):
-            print("Voice file created!")
             return True
     except Exception as e:
         print("Voice error:", e)
@@ -204,29 +183,10 @@ def send_to_telegram(text):
 
 
 def generate_article(theme):
-    headers = {
-        "Authorization": "Bearer " + GROQ_API_KEY,
-        "Content-Type": "application/json",
-    }
-    body = {
-        "model": MODEL,
-        "messages": [
-            {
-                "role": "system",
-                "content": "Ты блогер с живым языком. Без канцелярита. Говоришь на ты.",
-            },
-            {
-                "role": "user",
-                "content": "Напиши статью 200-300 слов на тему: " + theme + ". Начни с истории. 3-4 абзаца. В конце: Подписывайся на Telegram канал https://t.me/" + CHANNEL_LINK + " — мотивация без воды каждый день!",
-            },
-        ],
-        "temperature": 0.9,
-        "max_tokens": 600,
-    }
-    resp = requests.post(GROQ_URL, headers=headers, json=body, timeout=30)
-    if resp.status_code != 200:
-        return None
-    return resp.json()["choices"][0]["message"]["content"]
+    return call_groq(
+        "Ты блогер с живым языком. Без канцелярита. Говоришь на ты.",
+        "Напиши статью 200-300 слов на тему: " + theme + ". Начни с истории. 3-4 абзаца. В конце: Подписывайся на Telegram канал https://t.me/" + CHANNEL_LINK + " — мотивация без воды каждый день!"
+    )
 
 
 def publish_to_telegraph(title, content):
@@ -295,6 +255,10 @@ def main():
                 print("Voice sent!")
             else:
                 print("Voice send error:", vr)
+        else:
+            print("Voice creation failed")
+    else:
+        print("Voice text generation failed")
 
     # 2. Картинка с цитатой
     print("Generating quote...")
@@ -309,6 +273,10 @@ def main():
     # 3. Текстовый пост
     print("Generating post...")
     content = generate_post(theme)
+    if not content:
+        print("Post generation failed")
+        sys.exit(1)
+
     full_post = greeting + "\n\n" + content + "\n\n" + HASHTAGS
 
     # 4. Telegraph статья
