@@ -18,7 +18,10 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install
+    - name: Install ffmpeg
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+    - name: Install Python packages
       run: pip install --no-cache-dir requests==2.31.0 edge-tts==6.1.12
 
     - name: Run
