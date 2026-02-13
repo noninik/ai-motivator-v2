@@ -2,6 +2,7 @@ import random
 import os
 import sys
 import json
+import subprocess
 from datetime import datetime, timezone, timedelta
 import requests
 
@@ -71,35 +72,58 @@ THEMES = [
 
 POST_STYLES = [
     {
-        "system": "Ты дерзкий мотивационный блогер. Пишешь как будто разговариваешь с другом. Короткие рубленые фразы. Без воды. Говоришь на ты.",
-        "prompt": "Напиши мотивационный пост на тему: {theme}. Максимум 60 слов. Начни с провокационного вопроса. Потом 2-3 коротких мощных предложения. В конце один конкретный совет. Без вступлений. Пиши как будто бьешь словами.",
+        "system": "Ты дерзкий мотивационный блогер. Короткие рубленые фразы. Без воды. Говоришь на ты.",
+        "prompt": "Напиши мотивационный пост на тему: {theme}. Максимум 60 слов. Начни с провокационного вопроса. 2-3 коротких мощных предложения. В конце один конкретный совет.",
     },
     {
-        "system": "Ты рассказчик историй. Пишешь короткие цепляющие истории из жизни. Без морализаторства.",
-        "prompt": "Расскажи короткую историю на тему: {theme}. Максимум 60 слов. Начни сразу с действия. Никаких вступлений. История с деталями. В конце одно предложение-вывод.",
+        "system": "Ты рассказчик историй. Короткие цепляющие истории. Без морализаторства.",
+        "prompt": "Расскажи короткую историю на тему: {theme}. Максимум 60 слов. Начни сразу с действия. В конце одно предложение-вывод.",
     },
     {
-        "system": "Ты жесткий ментор. Говоришь неудобную правду. Коротко и хлестко.",
-        "prompt": "Напиши жесткий пост на тему: {theme}. Максимум 60 слов. Начни с фразы которая бесит но правдива. Объясни почему в 2 предложениях. Закончи действием.",
+        "system": "Ты жесткий ментор. Неудобная правда. Коротко и хлестко.",
+        "prompt": "Напиши жесткий пост на тему: {theme}. Максимум 60 слов. Начни с правдивой фразы которая бесит. Объясни в 2 предложениях. Закончи действием.",
     },
     {
         "system": "Ты автор постов с неожиданными фактами.",
-        "prompt": "Напиши пост на тему: {theme}. Максимум 60 слов. Начни с неожиданного факта. Свяжи с жизнью читателя. Закончи простым советом.",
+        "prompt": "Напиши пост на тему: {theme}. Максимум 60 слов. Начни с неожиданного факта. Свяжи с жизнью читателя. Закончи советом.",
     },
     {
-        "system": "Ты пишешь в формате мысленных экспериментов.",
-        "prompt": "Напиши пост на тему: {theme}. Максимум 60 слов. Начни с 'Представь...' Задай вопрос читателю. Закончи мощным выводом.",
+        "system": "Ты пишешь мысленные эксперименты.",
+        "prompt": "Напиши пост на тему: {theme}. Максимум 60 слов. Начни с 'Представь...' Задай вопрос. Закончи мощным выводом.",
     },
 ]
 
 QUOTE_STYLE = {
-    "system": "Ты создаешь мощные короткие цитаты. Одно предложение максимум 15 слов. На русском.",
-    "prompt": "Придумай одну мощную мотивационную цитату на тему: {theme}. Только цитату, без кавычек, без автора. Одно предложение. Максимум 15 слов. Дерзко и сильно.",
+    "system": "Ты создаешь мощные короткие цитаты на русском. Одно предложение.",
+    "prompt": "Придумай мощную мотивационную цитату на тему: {theme}. Одно предложение. Максимум 15 слов. Дерзко и сильно. Без кавычек.",
 }
 
-IMAGE_BACKGROUNDS = [
-    "https://picsum.photos/800/500?random=" ,
-]
+VOICE_STYLE = {
+    "system": "Ты мотивационный спикер. Пишешь текст для озвучки на русском.",
+    "prompt": "Напиши текст для голосового сообщения на тему: {theme}. 2-3 предложения. Максимум 40 слов. Говори как будто обращаешься к одному человеку. Начни с обращения. Мощно и коротко. Без кавычек.",
+}
+
+
+def generate_post(theme):
+    style = random.choice(POST_STYLES)
+    headers = {
+        "Authorization": "Bearer " + GROQ_API_KEY,
+        "Content-Type": "application/json",
+    }
+    body = {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": style["system"]},
+            {"role": "user", "content": style["prompt"].format(theme=theme)},
+        ],
+        "temperature": 0.9,
+        "max_tokens": 300,
+    }
+    resp = requests.post(GROQ_URL, headers=headers, json=body, timeout=30)
+    if resp.status_code != 200:
+        print("Groq error:", resp.text)
+        sys.exit(1)
+    return resp.json()["choices"][0]["message"]["content"]
 
 
 def generate_quote(theme):
@@ -122,22 +146,7 @@ def generate_quote(theme):
     return resp.json()["choices"][0]["message"]["content"]
 
 
-def generate_image_url(quote):
-    # Используем бесплатный сервис для создания картинки с текстом
-    text = requests.utils.quote(quote)
-    # Dynamicocs API — бесплатная генерация картинок с текстом
-    url = "https://api.placid.app/u/free?" # этот не работает бесплатно
-    
-    # Используем альтернативу — отправляем фото + текст отдельно
-    # Берём красивый фон с picsum
-    bg_url = "https://picsum.photos/800/500?random=" + str(random.randint(1, 10000))
-    return bg_url, quote
-
-
-def generate_post():
-    selected_theme = random.choice(THEMES)
-    style = random.choice(POST_STYLES)
-
+def generate_voice_text(theme):
     headers = {
         "Authorization": "Bearer " + GROQ_API_KEY,
         "Content-Type": "application/json",
@@ -145,17 +154,53 @@ def generate_post():
     body = {
         "model": MODEL,
         "messages": [
-            {"role": "system", "content": style["system"]},
-            {"role": "user", "content": style["prompt"].format(theme=selected_theme)},
+            {"role": "system", "content": VOICE_STYLE["system"]},
+            {"role": "user", "content": VOICE_STYLE["prompt"].format(theme=theme)},
         ],
         "temperature": 0.9,
-        "max_tokens": 300,
+        "max_tokens": 100,
     }
     resp = requests.post(GROQ_URL, headers=headers, json=body, timeout=30)
     if resp.status_code != 200:
-        print("Groq error:", resp.text)
-        sys.exit(1)
-    return resp.json()["choices"][0]["message"]["content"], selected_theme
+        return None
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def create_voice(text):
+    try:
+        subprocess.run(
+            ["edge-tts", "--voice", "ru-RU-DmitryNeural", "--text", text, "--write-media", "voice.ogg"],
+            timeout=30,
+            check=True,
+            capture_output=True,
+        )
+        if os.path.exists("voice.ogg"):
+            print("Voice file created!")
+            return True
+    except Exception as e:
+        print("Voice error:", e)
+    return False
+
+
+def send_voice_to_telegram(file_path):
+    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendVoice"
+    with open(file_path, "rb") as f:
+        files = {"voice": f}
+        data = {"chat_id": CHANNEL_ID}
+        resp = requests.post(url, data=data, files=files, timeout=30)
+    return resp.json()
+
+
+def send_photo_to_telegram(photo_url, caption):
+    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto"
+    payload = {"chat_id": CHANNEL_ID, "photo": photo_url, "caption": caption}
+    return requests.post(url, json=payload, timeout=30).json()
+
+
+def send_to_telegram(text):
+    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
+    payload = {"chat_id": CHANNEL_ID, "text": text, "disable_web_page_preview": False}
+    return requests.post(url, json=payload, timeout=30).json()
 
 
 def generate_article(theme):
@@ -168,7 +213,7 @@ def generate_article(theme):
         "messages": [
             {
                 "role": "system",
-                "content": "Ты блогер с живым языком. Пишешь как разговариваешь. Без канцелярита. Говоришь на ты.",
+                "content": "Ты блогер с живым языком. Без канцелярита. Говоришь на ты.",
             },
             {
                 "role": "user",
@@ -195,7 +240,6 @@ def publish_to_telegraph(title, content):
         return None
 
     token = acc["result"]["access_token"]
-
     paragraphs = content.split("\n")
     nodes = []
     for p in paragraphs:
@@ -217,22 +261,6 @@ def publish_to_telegraph(title, content):
     return None
 
 
-def send_photo_to_telegram(photo_url, caption):
-    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto"
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "photo": photo_url,
-        "caption": caption,
-    }
-    return requests.post(url, json=payload, timeout=30).json()
-
-
-def send_to_telegram(text):
-    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
-    payload = {"chat_id": CHANNEL_ID, "text": text, "disable_web_page_preview": False}
-    return requests.post(url, json=payload, timeout=30).json()
-
-
 def main():
     print("=== AI MOTIVATOR START ===")
 
@@ -240,7 +268,7 @@ def main():
         print("ERROR: env vars not set")
         sys.exit(1)
 
-    content, theme = generate_post()
+    theme = random.choice(THEMES)
     print("Theme:", theme)
 
     msk = timezone(timedelta(hours=3))
@@ -254,30 +282,39 @@ def main():
     else:
         greeting = "🌙"
 
-    # Генерируем цитату для картинки
+    # 1. Голосовое сообщение
+    print("Generating voice text...")
+    voice_text = generate_voice_text(theme)
+    if voice_text:
+        print("Voice text:", voice_text)
+        print("Creating audio...")
+        if create_voice(voice_text):
+            print("Sending voice...")
+            vr = send_voice_to_telegram("voice.ogg")
+            if vr.get("ok"):
+                print("Voice sent!")
+            else:
+                print("Voice send error:", vr)
+
+    # 2. Картинка с цитатой
     print("Generating quote...")
     quote = generate_quote(theme)
-
-    # Отправляем картинку с цитатой
     if quote:
         print("Quote:", quote)
         photo_url = "https://picsum.photos/800/500?random=" + str(random.randint(1, 99999))
-        caption = "💬 " + quote
-        print("Sending photo...")
-        photo_result = send_photo_to_telegram(photo_url, caption)
-        if photo_result.get("ok"):
+        pr = send_photo_to_telegram(photo_url, "💬 " + quote)
+        if pr.get("ok"):
             print("Photo sent!")
-        else:
-            print("Photo error:", photo_result)
 
-    # Отправляем текстовый пост
+    # 3. Текстовый пост
+    print("Generating post...")
+    content = generate_post(theme)
     full_post = greeting + "\n\n" + content + "\n\n" + HASHTAGS
 
-    # Telegraph статья
+    # 4. Telegraph статья
     print("Generating article...")
     article = generate_article(theme)
     if article:
-        print("Publishing to Telegraph...")
         tg_url = publish_to_telegraph(theme.capitalize(), article)
         if tg_url:
             full_post += "\n\n📖 Подробнее: " + tg_url
